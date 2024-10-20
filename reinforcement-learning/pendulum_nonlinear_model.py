@@ -31,7 +31,7 @@ def pendulum_step_odeint(state, time_step, force):
 
 # Örnek kullanım:
 
-# Zaman dizisi (0'dan 100'e kadar 1000 adım)
+# Zaman dizisi (0'dan 1000'e kadar 10000 adım)
 time = np.linspace(0, 1000, 10000)
 
 # Kuvvet dizisi (0'lar dizisi)
@@ -41,11 +41,12 @@ force = np.zeros(len(time))
 states = np.zeros((len(time), 4))
 
 # Başlangıç durumu: [x, x_dot, theta, theta_dot]
-initial_state = [0.0, 0.0, 0.0, 0.5]
+initial_state = [0.0, 0.0, np.random.uniform(-np.pi/18, np.pi/18), 0.0]
 states[0] = initial_state
 
 # Zaman adımı (time_step)
 time_step = time[1] - time[0]
+print(time_step)
 
 # Simülasyonu for döngüsü ile çalıştır
 for i in range(len(time) - 1):

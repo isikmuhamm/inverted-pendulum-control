@@ -2,10 +2,10 @@ import numpy as np
 import random
 from collections import deque
 import tensorflow as tf # type: ignore
-from tensorflow.keras.models import Sequential
-from tensorflow.keras import Input
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras import Input # type: ignore
+from tensorflow.keras.layers import Dense # type: ignore
+from tensorflow.keras.optimizers import Adam # type: ignore
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 
@@ -40,12 +40,12 @@ class DQNAgent:
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=2000)
-        self.gamma = 0.99    # Discount rate
+        self.gamma = 0.90    # Discount rate
         self.epsilon = 1.0   # Exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.01
-        self.batch_size = 32
+        self.batch_size = 64
         self.target_update_counter = 0
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -69,8 +69,8 @@ class DQNAgent:
         act_values = self.model.predict(state, verbose=0)
         return np.argmax(act_values[0])  # Maksimum Q-değerini döndür
 
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+    def remember(self, state, action, reward, next_state):
+        self.memory.append((state, action, reward, next_state))
 
     def replay(self):
         if len(self.memory) < self.batch_size:
@@ -95,9 +95,9 @@ class DQNAgent:
 
 # Parametreler
 state_size = 4  # [x, x_dot, theta, theta_dot]
-action_size = 9  # [-10, -5, 0, +5, +10]
-time_step = 0.1  # 20 ms zaman aralığı
-force_values = np.linspace(-20, 20, action_size)  # Kuvvetler
+action_size = 9  # [-20, -15, -10, -5, 0, +5, +10, +15, +20]
+time_step = 0.1  # 10 ms zaman aralığı
+force_values = np.linspace(-20, 20, action_size)  # Kuvvetler ayarlanıyor
 
 
 # Ajanı oluştur
@@ -106,8 +106,15 @@ agent = DQNAgent(state_size, action_size)
 # Simülasyon parametreleri
 episodes = 1000  # Eğitim bölümleri
 max_steps = 200  # Her bölümde maksimum adım
-initial_state = [0.0, 0.0, np.pi/6, 0.0]  # Başlangıç durumu
+initial_state = [0.0, 0.0, np.random.uniform(-np.pi/18, np.pi/18), 0.0]  # Başlangıç durumu
 states = []  # Durumları kaydetmek için bir liste
+total_rewards = []  # Toplam ödülleri kaydetmek için bir liste
+
+# Ağırlık matrisini tanımlama
+Q = np.array([[10, 0, 0, 0],      # Yatay konum için düşük ağırlık
+              [0, 1, 0, 0],       # Yatay hız için düşük ağırlık
+              [0, 0, 100, 0],     # Açısal pozisyon için yüksek ağırlık
+              [0, 0, 0, 10]])     # Açısal hız için orta derecede yüksek ağırlık
 
 for e in range(episodes):
     state = np.array(initial_state)
@@ -124,25 +131,14 @@ for e in range(episodes):
         
         # Ödül fonksiyonu
         x, x_dot, theta, theta_dot = next_state[0]     
-        theta_deg = np.degrees(abs(theta))  # Theta açısını dereceye çeviriyoruz.
-        
-        reward = np.cos(theta_deg)
 
-        #if theta_deg < 10:
-        #    reward = 10 - (theta ** 2) * 0.1 - (theta_dot ** 2) * 0.01  # Dik pozisyona yaklaştıkça pozitif ödül artıyor.
-        #else:
-        #    reward = -((theta**2) * 0.5 + abs(theta_dot) * 0.1)  # Dik pozisyondan uzaklaştıkça negatif ödül alıyor.
+        # Ödül hesapla
+        reward = -np.dot(np.dot(state, Q), state.T).item()
 
-        # Eğer açı -10 ile 10 derece arasındaysa sayaç artar
-        if theta_deg <= 15:
-            consecutive_steps += 1
-        else:
-            consecutive_steps = 0  # Eğer açı bu sınırların dışına çıkarsa sayaç sıfırlanır
+        # Sarkaç açısı -pi/4 (-45 derece) veya +pi/4 (45 derece) sınırlarını geçtiyse bölümü bitir
+        done = (abs(theta) >= np.pi / 4)
 
-        # Sayaç 3'e ulaştığında done True olur
-        done = (consecutive_steps >= 3) 
-
-        agent.remember(state, action, reward, next_state, done)
+        agent.remember(state, action, reward, next_state)
         state = next_state
         total_reward += reward
 
@@ -150,16 +146,18 @@ for e in range(episodes):
         states.append(state[0])
 
         if done or (step >= (max_steps-1)):
-            print(f"episode: {e}/{episodes}, score: {total_reward}, epsilon: {agent.epsilon}, done: {done}")
+            print(f"episode: {e}/{episodes}, score: {total_reward}, epsilon: {agent.epsilon}")
+            total_rewards.append(total_reward)  # Ödülü listeye ekle
             break
+
 
     agent.replay()
     
     if e % 10 == 0:
         agent.update_target_model() #Her 10 adımda bir modelin ağırlıkları güncelleniyor.
     if e % 100 == 0 and e>99:
-        agent.learning_rate *= 0.5
-        agent.epsilon *= 0.9
+        agent.learning_rate *= 0.7
+        agent.epsilon *= 0.95
         print(f"%%% Parametre güncellemesi yapıldı. Learning rate: {agent.learning_rate}, Epsilon: {agent.epsilon} %%%")
 
 
@@ -170,9 +168,6 @@ def plot_results(states):
     x_dot = states[:, 1]  # Arabadaki hız
     theta = states[:, 2]  # Açısal pozisyon
     theta_dot = states[:, 3]  # Açısal hız
-
-    # Durum dizisini TXT dosyası olarak kaydet
-    np.savetxt('pendulum_data.txt', states, delimiter=',', header='x,x_dot,theta,theta_dot', comments='')
 
     plt.figure(figsize=(12, 8))
     plt.subplot(2, 2, 1)
@@ -194,4 +189,22 @@ def plot_results(states):
     plt.tight_layout()
     plt.show()
 
+def plot_rewards(total_rewards):
+    plt.figure(figsize=(8, 6))
+    plt.plot(total_rewards)
+    plt.title("Toplam Ödül (Reward)")
+    plt.xlabel("Episode")
+    plt.ylabel("Toplam Ödül")
+    plt.grid(True)
+    plt.show()
+
+
+# Durumları çizdir
 plot_results(states)
+
+# Ödülleri çizdir
+plot_rewards(total_rewards)
+
+# Modeli kaydet
+agent.save("reinforcement-learning/pendulum_model.h5")  # Model ağırlıklarını kaydet
+np.savetxt('reinforcement-learning/pendulum_data.txt', states, delimiter=',', header='x,x_dot,theta,theta_dot', comments='') # Durumları dosyaya kaydet
