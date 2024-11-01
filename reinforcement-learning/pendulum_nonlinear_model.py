@@ -28,6 +28,16 @@ class PendulumEnvironment:
 
         return [x_dot, x_ddot, theta_dot, theta_ddot]
 
+    """     def step(self, state, F):
+        t = [0, self.time_step]
+        return odeint(self.dynamics, state, t, args=(F,))[-1] """
+    
     def step(self, state, F):
         t = [0, self.time_step]
-        return odeint(self.dynamics, state, t, args=(F,))[-1]
+        next_state = odeint(self.dynamics, state, t, args=(F,))[-1]
+        
+        # Theta'yı 0 ile 2π arasında tut
+        theta = next_state[2] % (2 * np.pi)
+        if theta > np.pi: theta -= 2 * np.pi
+        
+        return [next_state[0], next_state[1], theta, next_state[3]]
