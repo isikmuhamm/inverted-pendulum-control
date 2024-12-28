@@ -4,12 +4,32 @@ from matplotlib.animation import FuncAnimation
 from pendulum_nonlinear_model import PendulumEnvironment
 import os
 
+"""
+Bu kod dosyası, eğitim sürecinde elde edilen sonuçları görselleştirmek için kullanılır. Seçenekler:
+1 - Kuvvetsiz simülasyon animasyonu: Kuvvetsiz simülasyon sırasında durum değişimi animasyonunu gösterir.
+2 - Kuvvetsiz simülasyon grafikleri: Kuvvetsiz simülasyon sırasında durum değişimi grafiklerini gösterir.
+3 - Eğitim süreci animasyonu: Eğitim sürecindeki durum değişimi animasyonunu gösterir.
+4 - Eğitim süreci state grafikleri: Eğitim sürecindeki durum değişimini ve faz portrelerini gösterir.
+5 - Eğitim süreci ödül grafikleri: Eğitim sürecindeki ödül değişimini gösterir.
+6 - Eğitilmiş ajanın canlı simülasyonu: Eğitilmiş ajanı çalıştırarak bir animasyon, durum grafikleri, ödül grafikleri ve faz portrelerini gösterir.
+
+This code file is used to visualize the results obtained during the training process. Options:
+1 - Zero-force simulation animation: Shows the state change animation during the zero-force simulation.
+2 - Zero-force simulation graphs: Shows the state change graphs during the zero-force simulation.
+3 - Training process animation: Shows the state change animation during the training process.
+4 - Training process state graphs: Shows the state change and phase portraits during the training process.
+5 - Training process reward graphs: Shows the reward change during the training process.
+6 - Live simulation of the trained agent: Runs the trained agent to show an animation, state graphs, reward graphs, and phase portraits.
+
+"""
+
 class PendulumVisualizer:
     def __init__(self):
         self.env = PendulumEnvironment()
         self.l = self.env.l
         
     def create_cart_pendulum_animation(self, states, interval=50):
+        # Grafik sınırlarını ve boyutlarını ayarla
         fig, ax = plt.subplots(figsize=(12, 8))
         ax.set_xlim(-2, 2)
         ax.set_ylim(-2, 2)
@@ -19,6 +39,10 @@ class PendulumVisualizer:
         cart, = ax.plot([], [], 'ks-', lw=10)  # Aracı temsil eden siyah bir kare
         pendulum_line, = ax.plot([], [], 'ro-', lw=2, label='Pendulum')  # Sarkaç çizgisi
         trace, = ax.plot([], [], ':b', alpha=0.3, label='Pendulum Path') #Sarkacın izlediği yol
+        
+        # İz için hafıza
+        history_x = []
+        history_y = []
 
         # Metin alanları için
         time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
@@ -30,28 +54,38 @@ class PendulumVisualizer:
         def init():
             cart.set_data([], [])
             pendulum_line.set_data([], [])
+            trace.set_data([], [])
             time_text.set_text('')
             angle_text.set_text('')
             angledot_text.set_text('')
             x_text.set_text('')
             xdot_text.set_text('')
-            return cart, pendulum_line, time_text, angle_text, angledot_text, x_text, xdot_text
+            return cart, pendulum_line, trace, time_text, angle_text, angledot_text, x_text, xdot_text
 
         def animate(i):
-            x = states[i, 0]  # Arabanın pozisyonu
-            theta = states[i, 2]  # Sarkacın açısı (radyan cinsinden)
-            xdot = states[i, 1]  # Arabanın hızı
-            theta_dot = states[i, 3]  # Sarkacın açısı hızı
+            x = states[i,0, 0]  # Arabanın pozisyonu
+            theta = states[i,0, 2]  # Sarkacın açısı (radyan cinsinden)
+            xdot = states[i,0, 1]  # Arabanın hızı
+            theta_dot = states[i,0, 3]  # Sarkacın açısı hızı
             
             # Aracın pozisyonunu güncelle
             cart_x = [x - 0.1, x + 0.1]  # Aracı bir kare olarak modelle
             cart_y = [0, 0]
             cart.set_data(cart_x, cart_y)
             
+            # Görünüm sınırlarını arabaya göre güncelle, iptal etmek için yoruma al
+            # ax.set_xlim(x - 2, x + 2)  # Arabayı merkeze al ve ±2 birim göster
+
             # Sarkaç ucu pozisyonu
             pendulum_x = [x, x + self.l * np.sin(theta)]  # Sarkaç yatay pozisyonu
-            pendulum_y = [0, self.l * np.cos(theta)]       # Sarkaç dikey pozisyonu
+            pendulum_y = [0, -self.l * np.cos(theta)]       # Sarkaç dikey pozisyonu
             pendulum_line.set_data(pendulum_x, pendulum_y)
+
+            # İzi güncelle (her 3 noktada bir kaydet - performans için)
+            if i % 3 == 0:
+                history_x.append(pendulum_x)
+                history_y.append(pendulum_y)
+            trace.set_data(history_x, history_y)
 
             # Metin bilgilerini güncelle
             time_text.set_text(f'Time: {i * 0.02:.2f} [s]')
@@ -60,7 +94,7 @@ class PendulumVisualizer:
             x_text.set_text(f'Cart Location: {x:.2f} [m]')
             xdot_text.set_text(f'Cart Speed: {xdot:.2f} [m/s]')
 
-            return cart, pendulum_line, time_text, angle_text, x_text, xdot_text, angledot_text
+            return cart, pendulum_line, trace, time_text, angle_text, x_text, xdot_text, angledot_text
 
         anim = FuncAnimation(fig, animate, init_func=init, frames=len(states), interval=interval, blit=True)
 
@@ -78,7 +112,7 @@ class PendulumVisualizer:
         colors = ['b', 'g', 'r', 'm']
         
         for i, (ax, var) in enumerate(zip(axs, variables)):
-            ax.plot(t, states[:, i], color=colors[i])
+            ax.plot(t, states[:,0, i], color=colors[i])
             ax.set_title(f"{var} ({title_prefix})")
             ax.grid(True)
         
@@ -88,15 +122,15 @@ class PendulumVisualizer:
     def plot_phase_portraits(self, states):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6))
         
-        ax1.plot(states[:, 0], states[:, 1], 'b-', alpha=0.6)
-        ax1.set_xlabel('Position (m)')
-        ax1.set_ylabel('Velocity (m/s)')
+        ax1.plot(states[:,0, 1], states[:,0, 0], 'b-')
+        ax1.set_ylabel('Position (m)')
+        ax1.set_xlabel('Velocity (m/s)')
         ax1.set_title('Cart Phase Portrait')
         ax1.grid(True)
         
-        ax2.plot(states[:, 2], states[:, 3], 'r-', alpha=0.6)
-        ax2.set_xlabel('Angle (rad)')
-        ax2.set_ylabel('Angular Velocity (rad/s)')
+        ax2.plot(states[:,0, 3], states[:,0, 2], 'r-')
+        ax2.set_ylabel('Angle (rad)')
+        ax2.set_xlabel('Angular Velocity (rad/s)')
         ax2.set_title('Pendulum Phase Portrait')
         ax2.grid(True)
         
@@ -123,10 +157,8 @@ class PendulumVisualizer:
             return
 
         env = PendulumEnvironment()
-        action_size = 17
-        force_values = np.linspace(-20, 20, action_size)  # Ajanın eğitimde kullandığı kuvvet değerleri
-
-        initial_state = np.array([0.0, 0.0, np.random.uniform(-np.pi / 18, +np.pi / 18), 0.0])
+        
+        initial_state = env.initial_state
         print(f"Başlangıç durumu: {initial_state}")
         state = initial_state.reshape(1, 4)  # Model için reshape
         states = [initial_state]  # İlk durumu listeye ekle
@@ -135,7 +167,7 @@ class PendulumVisualizer:
             # Modelin tahmin ettiği Q değerlerinden eylemi seç
             q_values = model.predict(state, verbose=0)[0]
             action_index = np.argmax(q_values)  # En yüksek Q-değerine sahip indeks
-            action = force_values[action_index]  # İlgili kuvvet değeri
+            action = env.force_values[action_index]  # İlgili kuvvet değeri
             
             print(f"Q-values: {q_values}")
             print(f"Seçilen Action (Kuvvet): {action}")
@@ -202,7 +234,7 @@ def main():
                 visualizer.create_cart_pendulum_animation(states)
 
             elif choice == '4':
-                file_path = os.path.join(base_path, "states.npy")
+                file_path = os.path.join(base_path, "reward_states.npy")
                 if not os.path.exists(file_path):
                     print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
