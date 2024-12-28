@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import os
 from collections import deque
 import tensorflow as tf
 from tensorflow.keras.models import Sequential # type: ignore
@@ -8,30 +9,39 @@ from tensorflow.keras.layers import Dense # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
 from pendulum_nonlinear_model import PendulumEnvironment
 
+CONTINUE_TRAINING = False
+POISSON_IMPATCS = False
+save_folder = "reinforcement-learning"
+max_len = 50000
+poisson_lambda = 10
+
 class DQNAgent:
     def __init__(self, state_size, action_size):
         # Model parametreleri
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=2000)
-        self.gamma = 0.90    # Discount rate
+        self.memory = deque(maxlen=max_len)
+        self.gamma = 0.99    # Discount rate
         self.epsilon = 1.0   # Exploration rate
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
-        self.learning_rate = 0.005
+        self.epsilon_decay = 0.9999
+        self.learning_rate = 0.0001
         self.batch_size = 64
-        self.target_update_counter = 0
         
         # Modeller
-        self.model = self._build_model()
-        self.target_model = self._build_model()
+        if CONTINUE_TRAINING:
+            self.load_agent(f"{save_folder}")
+        else:
+            self.model = self._build_model()
+            self.target_model = self._build_model()
         self.update_target_model()
 
     def _build_model(self):
         model = Sequential([
             Input(shape=(self.state_size,)),
-            Dense(64, activation='relu'),
-            Dense(64, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(128, activation='relu'),
             Dense(self.action_size, activation='linear')
         ])
         model.compile(loss='mse', optimizer=Adam(learning_rate=self.learning_rate))
@@ -39,7 +49,6 @@ class DQNAgent:
 
     def update_target_model(self):
         self.target_model.set_weights(self.model.get_weights())
-        self.target_update_counter += 1
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
@@ -61,113 +70,173 @@ class DQNAgent:
         next_states = np.array([x[3][0] for x in minibatch])
         dones = np.array([x[4] for x in minibatch])
 
-        targets = rewards + self.gamma * np.max(self.target_model.predict(next_states, verbose=0), axis=1) * (1 - dones)
+        # Double DQN implementasyonu
+        next_actions = np.argmax(self.model.predict(next_states, verbose=0), axis=1)
+        target_q_values = self.target_model.predict(next_states, verbose=0)
+        targets = rewards + self.gamma * target_q_values[np.arange(len(next_actions)), next_actions] * (1 - dones)
+        
         target_f = self.model.predict(states, verbose=0)
         target_f[np.arange(self.batch_size), actions] = targets
         
         self.model.fit(states, target_f, epochs=1, verbose=0, batch_size=self.batch_size)
         
+        # Adaptive epsilon decay
         self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
 
     def save_agent(self, folder_path):
         """Ajanın tüm durumunu kaydet"""
-        # Model
-        self.model.save(f'{folder_path}/model', save_format='tf')
+        try:
+            # Klasör yoksa oluştur
+            os.makedirs(folder_path, exist_ok=True)
+            
+            # Modeli kaydet
+            model_path = f'{folder_path}/pendulum_model.keras'
+            self.model.save(model_path)
+            print(f"Model başarıyla {model_path} konumuna kaydedildi.")
+            
+            # Ajanın durumu
+            agent_state = {
+                'epsilon': self.epsilon,
+                'learning_rate': self.learning_rate,
+                'memory': list(self.memory)
+            }
+            agent_state_path = f'{folder_path}/agent_state.npy'
+            np.save(agent_state_path, agent_state)
+            print(f"Ajan durumu başarıyla {agent_state_path} konumuna kaydedildi.")
         
-        # Agent durumu
-        agent_state = {
-            'epsilon': self.epsilon,
-            'learning_rate': self.learning_rate,
-            'memory': list(self.memory)
-        }
-        np.save(f'{folder_path}/agent_state.npy', agent_state)
+        except Exception as e:
+            print(f"Hata: Ajan kaydedilirken bir sorun oluştu. Hata mesajı: {e}")
 
     def load_agent(self, folder_path):
         """Ajanın tüm durumunu yükle"""
-        # Model
-        self.model = tf.keras.models.load_model(f'{folder_path}/model')
-        self.target_model = tf.keras.models.load_model(f'{folder_path}/model')
+        try:
+            # Model yolları
+            model_path = f'{folder_path}/pendulum_model.keras'
+            agent_state_path = f'{folder_path}/agent_state.npy'
+            
+            # Model dosyası mevcut mu?
+            if not os.path.exists(model_path) or not os.path.exists(agent_state_path):
+                raise FileNotFoundError(f"Model veya ajan durumu dosyası bulunamadı: {model_path} veya {agent_state_path}")
+            
+            # Modeli yükle
+            self.model = tf.keras.models.load_model(model_path)
+            self.target_model = tf.keras.models.load_model(model_path)
+            print(f"Model başarıyla {model_path} konumundan yüklendi.")
+            
+            # Ajanın durumu
+            agent_state = np.load(agent_state_path, allow_pickle=True).item()
+            self.epsilon = agent_state.get('epsilon', self.epsilon)
+            self.learning_rate = agent_state.get('learning_rate', self.learning_rate)
+            self.memory = deque(agent_state.get('memory', []), maxlen=max_len)
+            print(f"Ajan durumu başarıyla {agent_state_path} konumundan yüklendi.")
         
-        # Agent durumu
-        agent_state = np.load(f'{folder_path}/agent_state.npy', allow_pickle=True).item()
-        self.epsilon = agent_state['epsilon']
-        self.learning_rate = agent_state['learning_rate']
-        self.memory = deque(agent_state['memory'], maxlen=2000)
+        except FileNotFoundError as fnf_error:
+            print(f"Hata: {fnf_error}")
+        except ValueError as ve:
+            print(f"Hata: Ajan durumu dosyası bozuk veya eksik olabilir. Hata mesajı: {ve}")
+        except Exception as exc:
+            print(f"Bilinmeyen bir hata oluştu: {exc}")
 
-def train(episodes=1000, max_steps=200):
-    # Eğitim parametreleri
+
+def train(episodes=2000, max_steps=200):
+    # Ajanın ve ortamın oluşturulması
     env = PendulumEnvironment()
-    state_size = 4
-    action_size = 17
-    force_values = np.linspace(-20, 20, action_size)
-    
-    # Ajan oluştur
-    agent = DQNAgent(state_size, action_size)
+    agent = DQNAgent(env.state_size, env.action_size)
     
     # Ağırlık matrisi
     Q = np.array([
-        [1, 0, 0, 0],      # Yatay konum
-        [0, 1, 0, 0],      # Yatay hız
-        [0, 0, 100, 0],    # Açısal pozisyon
-        [0, 0, 0, 10]      # Açısal hız
+        [2, 0, 0, 0],       # Yatay konum
+        [0, 1, 0, 0],       # Yatay hız
+        [0, 0, 5, 0],       # Açısal pozisyon
+        [0, 0, 0, 1]        # Açısal hız
     ])
     
     # Veri toplama
     states_history = []
+    reward_states_history = []
     rewards_history = []
+    loss_history = []
     
     for e in range(episodes):
-        state = np.array([0.0, 0.0, np.random.uniform(np.pi-np.pi/18, np.pi+np.pi/18), 0.0])
+        state = env.initial_state
         state = np.reshape(state, [1, 4])
+        print(f"Episode {e+1}/{episodes}: Initial State: {state}")
         total_reward = 0
         
+        if POISSON_IMPATCS:
+            num_impacts = np.random.poisson(poisson_lambda)  # Darbe sayısı
+            impact_steps = np.sort(np.random.choice(range(max_steps), size=num_impacts, replace=False))  # Darbe adımları
+            impact_forces = np.random.uniform(-10, 10, size=num_impacts)  # Darbe kuvvetleri
+            
+            print(f"Episode {e+1}/{episodes}:")
+            print(f"  Darbe Adımları: {impact_steps}")
+            print(f"  Darbe Kuvvetleri: {impact_forces}")
+
+
         for step in range(max_steps):
             # Aksiyon seç ve uygula
             action = agent.act(state)
-            force = force_values[action]
+            force = env.force_values[action]
+
+            if POISSON_IMPATCS:
+                if step in impact_steps:
+                    impact_index = np.where(impact_steps == step)[0][0]  # Hangi darbe olduğunu bul
+                    force += impact_forces[impact_index]
+                    print(f"  Adım {step}: Darbe Uygulandı! Kuvvet: {impact_forces[impact_index]:.2f}")
+            
+            # Çevreyi güncelle
             next_state = env.step(state[0], force)
             next_state = np.reshape(next_state, [1, 4])
-            reward_state = np.array([next_state[0, 0], next_state[0, 1], np.pi - next_state[0, 2], next_state[0, 3]])
+
+            x = next_state[0, 0]
+            xdot = next_state[0, 1]
+            theta = (np.pi - next_state[0, 2] + np.pi) % (2 * np.pi) - np.pi    # [-π, π] aralığında normalize et
+            thetadot = next_state[0, 3]
+            print (f"  Adım {step+1}: x: {x:.2f}, xdot: {xdot:.2f}, theta: {theta:.2f}, thetadot: {thetadot:.2f}, F: {force:.2f}")
 
             # Ödül hesapla
-            reward = -np.dot(np.dot(reward_state, Q), reward_state.T).item()
+            reward_state = np.array([x, xdot, theta, thetadot])
+            reward_state = np.reshape(reward_state, [1, 4])
+            reward = -(0.1 * np.dot(np.dot(reward_state, Q), reward_state.T).item() + 0.01 * (force**2))
+            # reward = -(np.cos(theta)) - (abs(x) > 5)
+            # # reward = -( np.dot(np.dot(reward_state, Q), np.array(reward_state).T).item() + 0.1*abs(x) + 0.1*abs(theta) )
+            # reward = -np.dot(np.dot(state, Q), state.T).item()
             
-            # Bölüm bitti mi kontrol et
-            theta = next_state[0, 2]
-            done = (abs(np.pi-theta) >= np.pi/4)
+            # Bölüm bitti mi kontrol et, bittiyse cezalandır.
+            done = (abs(theta) >= np.pi/4) or (abs(x) > 5)
+            if done: 
+                reward -= 0.05 * (max_steps - step)
+                print(f"  Adım {step+1}: Bölüm bitirildi! Theta ve x: {theta:.2f}, {x:.2f}")
             
+
             # Hafızaya ekle ve öğren
             agent.remember(state, action, reward, next_state, done)
             state = next_state
             total_reward += reward
+            states_history.append(state)
+            reward_states_history.append(reward_state)
             
-            states_history.append(state[0])
-            
+            # Replay ve model güncelleme
+            if step % 2 :
+                agent.replay()
+                agent.update_target_model()
+
             if done or step == max_steps-1:
-                print(f"episode: {e}/{episodes}, score: {total_reward:.5f}, epsilon: {agent.epsilon:.5f}")
+                print(f"episode: {e+1}/{episodes}, score: {total_reward:.6f}, epsilon: {agent.epsilon:.6f}")
                 rewards_history.append(total_reward)
                 break
-        
-        agent.replay()
-        
-        # Periyodik güncellemeler
-        if e and e % 10 == 0:
-            agent.update_target_model()
-        if e and e % 100 == 0:
-            agent.learning_rate *= 0.5
-            agent.epsilon = max(agent.epsilon * agent.epsilon_decay, agent.epsilon_min)
-            print(f"%%% Parametre güncellemesi yapıldı. Learning rate: {agent.learning_rate:.5f}, Epsilon: {agent.epsilon:.5f}. %%%")
+
     
-    return agent, np.array(states_history), np.array(rewards_history)
+    return agent, np.array(states_history), np.array(rewards_history), np.array(reward_states_history), np.array(loss_history)   
 
 if __name__ == "__main__":
     # Eğitimi çalıştır
-    agent, states, rewards = train()
+    agent, states, rewards, reward_states, loss = train(episodes=5)
     
     # Sonuçları kaydet
-    save_folder = "reinforcement-learning"
     agent.save_agent(f"{save_folder}")
     np.save(f"{save_folder}/states.npy", states)
+    np.save(f"{save_folder}/reward_states.npy", reward_states)
     np.save(f"{save_folder}/rewards.npy", rewards)
-    
-    print("Eğitim tamamlandı. Sonuçlar kaydedildi.")
+    np.save(f"{save_folder}/loss.npy", loss)
+    print("Eğitim tamamlandı. Durum ve ödül geçmişi kaydedildi.")
