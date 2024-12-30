@@ -22,8 +22,15 @@ class PendulumEnvironment:
         self.action_size = 9
         self.state_size = 4
         self.force_values = np.linspace(-1, 1, self.action_size)*10
-        self.initial_state = np.array([np.random.uniform(-0.1, 0.1), np.random.uniform(-0.1, 0.1), np.random.uniform(np.pi-np.pi/18, np.pi+np.pi/18), np.random.uniform(-0.1, 0.1)])
         
+    @property
+    def initial_state(self):
+        return np.array([
+            np.random.uniform(-0.1, 0.1),          # x
+            np.random.uniform(-0.1, 0.1),          # x_dot
+            np.random.uniform(np.pi-np.pi/18, np.pi+np.pi/18),  # theta
+            np.random.uniform(-0.1, 0.1)           # theta_dot
+        ])   
     def dynamics(self, state, t, F):
         x, x_dot, theta, theta_dot = state
         Sx = np.sin(theta)
