@@ -1,134 +1,364 @@
-# Pekiştirmeli Öğrenme ile Ters Sarkaç Dengeleme Problemi (English Below)
+# Inverted Pendulum Control Project with Reinforcement Learning (Türkçe içerik için aşağı kaydırın)
 
-Bu proje, bir ters sarkaç sistemini dengelemek için Derin Q-Learning (DQN) algoritmasını kullanmaktadır. DQN, takviye öğrenme (reinforcement learning) alanında kullanılan bir yöntemdir ve bir sinir ağı kullanarak eylem değerlerini (Q değerleri) tahmin eder. Projenin amacı, sarkacı dik tutmaya çalışırken en uygun kuvvetleri öğrenmektir.
+This project implements advanced control strategies for an inverted pendulum system, featuring both single-pendulum reinforcement learning and competitive two-pendulum scenarios. Using Deep Q-Learning (DQN), the system learns to maintain pendulums in their upright positions while managing cart movements and competitive interactions.
 
-## İçindekiler
+## Table of Contents
 
-- [Kurulum](#kurulum)
-- [Kullanım](#kullanım)
-- [Kod Yapısı](#kod-yapısı)
-- [Algoritma Açıklaması](#algoritma-açıklaması)
-- [Sonuçlar](#sonuçlar)
-
-## Kurulum
-
-Proje için gerekli olan kütüphaneleri yüklemek için aşağıdaki komutları kullanabilirsiniz:
-
-```bash
-pip install numpy matplotlib scipy tensorflow
-```
-
-## Kullanım
-
-Projenin çalıştırılması için Python ortamında aşağıdaki komutu kullanın:
-
-```bash
-python pendulum_training.py
-```
-Projenin modelini animasyonlu bir şekilde izlemek için Python ortamında aşağıdaki komutu kullanın:
-
-```bash
-python pendulum_nonlinear_model.py
-```
-
-### Çıktılar
-
-Program çalıştırıldığında, ters sarkaç sisteminin pozisyonu, hızı, açısı ve açısal hızı gibi durum bilgileri bir grafik ile gösterilecektir.
-
-## Kod Yapısı
-
-- `pendulum_dynamics(state, t, M, m, b, l, I, g, F)`: Ters sarkaç sisteminin dinamiklerini tanımlayan fonksiyon.
-- `pendulum_step(state, F, time_step)`: Bir adımda sistemin yeni durumunu hesaplar.
-- `DQNAgent`: DQN algoritmasını uygulayan ajan sınıfı.
-  - `__init__`: Ajanın başlangıç parametrelerini ayarlar.
-  - `_build_model`: Sinir ağı modelini oluşturur.
-  - `update_target_model`: Hedef modelin ağırlıklarını günceller.
-  - `act`: Mevcut duruma göre bir aksiyon seçer.
-  - `remember`: Deneyimleri hafızaya kaydeder.
-  - `replay`: Ajanın deneyimlerine göre modelini günceller.
-
-## Algoritma Açıklaması
-
-1. **Parametrelerin Tanımlanması**: Fiziksel özellikler (`M`, `m`, `b`, `l`, `I`, `g`) tanımlanır.
-2. **Diferansiyel Denklem Çözümü**: `pendulum_dynamics` fonksiyonu, mevcut durum ve kuvvete göre hız ve hızlanmaları hesaplar.
-3. **Ajan Oluşturma**: `DQNAgent` sınıfı, durum ve aksiyon uzayını alır ve Q değerlerini öğrenmek için bir sinir ağı oluşturur.
-4. **Eğitim Süreci**: Her bölümde ajan, mevcut durumdan bir aksiyon seçer, yeni durumu hesaplar, ödül alır ve bu bilgiyi hafızaya kaydeder. Minibatch kullanarak ağı eğitir.
-5. **Epsilon-Greedy Politikasının Uygulanması**: Ajan, keşif (exploration) ve sömürü (exploitation) arasında denge kurar. `epsilon` değeri zamanla azalır.
-6. **Sonuçların Görselleştirilmesi**: Eğitim süreci sonunda sarkaç sisteminin durumu grafiklerle gösterilir.
-
-## Sonuçlar
-
-Proje sonunda, ters sarkaç sistemi başarılı bir şekilde dengede tutulmaya çalışılmakta ve eğitim sürecinin verimliliği grafikte gösterilmektedir. 
-
-Grafikte, sarkacın pozisyonu ve açı gibi durumları gözlemlenebilir. 
-
-
-
-----------------------------------------------------------------------------------------
-
-
-
-# Inverted Pendulum Balancing with Reinforcement Control
-
-This project uses the Deep Q-Learning (DQN) algorithm to balance an inverted pendulum system. DQN is a method used in the field of reinforcement learning and estimates action values (Q-values) using a neural network. The goal of the project is to learn the optimal forces while trying to keep the pendulum upright.
-
-## Contents
-
+- [Project Overview](#project-overview)
+- [Project Structure](#project-structure)
+- [System Model](#system-model)
+- [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Code Structure](#code-structure)
-- [Algorithm Explanation](#algorithm-explanation)
-- [Results](#results)
+- [Algorithm Details](#algorithm-details)
+- [Configuration](#configuration)
+- [Model Architecture](#model-architecture)
+- [Data Storage](#data-storage)
+- [Results and Visualization](#results-and-visualization)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Project Overview
+
+The project uses Deep Q-Learning to control inverted pendulum systems. Key objectives include:
+- Single pendulum stabilization
+- Competitive two-pendulum scenarios
+- Real-time visualization and analysis
+- Advanced reinforcement learning implementation
+
+## Project Structure
+
+```
+.
+└── reinforcement-learning/       # Model and simulation data storage
+    ├── pendulum_nonlinear_model.py     # Core physics engine
+    ├── pendulum_zero_simulation.py      # Zero-force simulation
+    ├── pendulum_training.py             # Single pendulum RL
+    ├── pendulum_training_fight.py       # Competitive simulation
+    └── pendulum_visualizer.py           # Visualization tools
+```
+
+## System Model
+
+Based on the CTMS Michigan model, the system includes:
+
+- Cart mass (M): 0.5 kg
+- Pendulum mass (m): 0.2 kg
+- Friction coefficient (b): 0.1 N/m/sec
+- Pendulum length (l): 0.3 m
+- Moment of inertia (I): 0.006 kg.m²
+- Time step: 35ms
+
+## Features
+
+### 1. Zero-Force Simulation
+- Natural system dynamics simulation
+- Initial condition response analysis
+- State tracking and visualization
+
+### 2. Single Pendulum Control
+- DQN implementation with:
+  - Double DQN architecture
+  - Experience replay buffer
+  - Adaptive exploration rate
+  - Customizable neural network
+
+### 3. Two-Pendulum Competition
+- Competitive agent interaction
+- Balanced and attack force applications
+- Optional Poisson impact distribution
+- State and reward sharing
+
+### 4. Visualization Tools
+- Real-time animations
+- State space analysis
+- Training metrics
+- Phase portraits
 
 ## Installation
 
-You can use the following commands to install the necessary libraries for the project:
-
 ```bash
-pip install numpy matplotlib scipy tensorflow
+# Clone the repository
+git clone https://github.com/isikmuhamm/inverted-pendulum-control
+
+# Install dependencies
+pip install numpy tensorflow scipy matplotlib
 ```
 
 ## Usage
 
-To run the project in a Python environment, use the following command:
+### Core Components
 
 ```bash
-python pendulum_training.py
+# Zero-force simulation
+python reinforcement-learning/pendulum_zero_simulation.py
+
+# Single pendulum training
+python reinforcement-learning/pendulum_training.py
+
+# Two-pendulum competition
+python reinforcement-learning/pendulum_training_fight.py
+
+# Visualization interface
+python reinforcement-learning/pendulum_visualizer.py
 ```
 
-To view the model of the project with animation, use the following command:
+### Visualization Options
 
-```bash
-python pendulum_nonlinear_model.py
+1. Zero-force simulation animation
+2. System state graphs
+3. Training process visualization
+4. State space analysis
+5. Reward tracking
+6. Live trained agent simulation
+
+## Algorithm Details
+
+### DQN Implementation
+1. **State Space**: Includes cart position, velocity, pendulum angle, and angular velocity
+2. **Action Space**: Discretized force values for balance and attack
+3. **Training Process**:
+   - Experience collection
+   - Minibatch sampling
+   - Q-value updates
+   - Target network synchronization
+
+### Key Components
+- `DQNAgent`: Main learning agent class
+- `pendulum_dynamics`: System physics implementation
+- `pendulum_step`: State progression calculator
+- `replay`: Experience-based learning method
+
+## Configuration
+
+Adjustable parameters:
+```python
+CONTINUE_TRAINING = False  # Continue from saved model
+POISSON_IMPACTS = False   # Enable random impacts
+max_len = 50000          # Replay buffer size
+poisson_lambda = 10      # Impact frequency
 ```
 
-### Outputs
+## Model Architecture
 
-When the program is run, state information such as the position, velocity, angle, and angular velocity of the inverted pendulum system will be displayed in a graph.
+```
+Input Layer (4/8 neurons)
+    ↓
+Dense Layer (256 neurons, ReLU)
+    ↓
+Dense Layer (256 neurons, ReLU)
+    ↓
+Dense Layer (128 neurons, ReLU)
+    ↓
+Output Layer (Action space size, Linear)
+```
 
-## Code Structure
+## Data Storage
 
-- `pendulum_dynamics(state, t, M, m, b, l, I, g, F)`: Function that defines the dynamics of the inverted pendulum system.
-- `pendulum_step(state, F, time_step)`: Calculates the new state of the system in one step.
-- `DQNAgent`: Class implementing the DQN algorithm.
-  - `__init__`: Sets the initial parameters of the agent.
-  - `_build_model`: Creates the neural network model.
-  - `update_target_model`: Updates the weights of the target model.
-  - `act`: Selects an action based on the current state.
-  - `remember`: Stores experiences in memory.
-  - `replay`: Updates the model based on the agent’s experiences.
+Generated files:
+- Model weights: `pendulum_model.keras`
+- Agent state: `agent_state.npy`
+- Training history: `states.npy`, `rewards.npy`
 
-## Algorithm Explanation
+## Results and Visualization
 
-1. **Defining Parameters**: The physical properties (`M`, `m`, `b`, `l`, `I`, `g`) are defined.
-2. **Differential Equation Solution**: The `pendulum_dynamics` function calculates the velocities and accelerations based on the current state and force.
-3. **Agent Creation**: The `DQNAgent` class takes the state and action space and creates a neural network to learn Q-values.
-4. **Training Process**: In each episode, the agent selects an action based on the current state, calculates the new state, receives a reward, and stores this information in memory. The agent trains the network using a minibatch.
-5. **Applying the Epsilon-Greedy Policy**: The agent balances exploration and exploitation. The `epsilon` value decreases over time.
-6. **Visualization of Results**: At the end of the training process, the state of the pendulum system is shown with graphs.
+The visualization system provides:
+- Real-time system state monitoring
+- Training progress tracking
+- Performance metrics analysis
+- Phase space visualization
 
-## Results
+## Contributing
 
-At the end of the project, the inverted pendulum system is successfully kept in balance, and the efficiency of the training process is shown in the graph.
+Contributions welcome! Please feel free to:
+- Submit issues
+- Fork the repository
+- Create pull requests
+- Suggest improvements
 
-In the graph, the states of the pendulum such as position and angle can be observed.
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+-----------------------------------
+
+# Pekiştirmeli Öğrenme ile Ters Sarkaç Kontrol Projesi  
+
+Bu proje, tekli sarkaç pekiştirmeli öğrenme ve rekabetçi iki sarkaç senaryolarını içeren gelişmiş bir kontrol stratejisini uygular. Deep Q-Learning (DQN) kullanarak sistem, sarkaçları dikey konumda tutmayı, araba hareketlerini yönetmeyi ve rekabetçi etkileşimleri öğrenir.  
+
+## İçindekiler  
+
+- [Proje Genel Bakış](#proje-genel-bakış)  
+- [Proje Yapısı](#proje-yapısı)  
+- [Sistem Modeli](#sistem-modeli)  
+- [Özellikler](#özellikler)  
+- [Kurulum](#kurulum)  
+- [Kullanım](#kullanım)  
+- [Algoritma Detayları](#algoritma-detayları)  
+- [Yapılandırma](#yapılandırma)  
+- [Model Mimarisi](#model-mimarisi)  
+- [Veri Depolama](#veri-depolama)  
+- [Sonuçlar ve Görselleştirme](#sonuçlar-ve-görselleştirme)  
+- [Katkıda Bulunma](#katkıda-bulunma)  
+- [Lisans](#lisans)  
+
+## Proje Genel Bakış  
+
+Bu proje, ters sarkaç sistemlerini kontrol etmek için Deep Q-Learning kullanır. Ana hedefler:  
+- Tekli sarkaç dengeleme  
+- Rekabetçi iki sarkaç senaryoları  
+- Gerçek zamanlı görselleştirme ve analiz  
+- Gelişmiş pekiştirmeli öğrenme uygulamaları  
+
+## Proje Yapısı  
+
+```  
+.  
+└── reinforcement-learning/       # Model ve simülasyon veri deposu  
+    ├── pendulum_nonlinear_model.py     # Temel fizik motoru  
+    ├── pendulum_zero_simulation.py      # Sıfır kuvvet simülasyonu  
+    ├── pendulum_training.py             # Tekli sarkaç RL  
+    ├── pendulum_training_fight.py       # Rekabetçi simülasyon  
+    └── pendulum_visualizer.py           # Görselleştirme araçları  
+```  
+
+## Sistem Modeli  
+
+CTMS Michigan modeline dayalı sistem şunları içerir:  
+- Araba kütlesi (M): 0.5 kg  
+- Sarkaç kütlesi (m): 0.2 kg  
+- Sürtünme katsayısı (b): 0.1 N/m/sn  
+- Sarkaç uzunluğu (l): 0.3 m  
+- Atalet momenti (I): 0.006 kg.m²  
+- Zaman adımı: 35ms  
+
+## Özellikler  
+
+### 1. Sıfır Kuvvet Simülasyonu  
+- Doğal sistem dinamiği simülasyonu  
+- Başlangıç durumu yanıt analizi  
+- Durum takibi ve görselleştirme  
+
+### 2. Tekli Sarkaç Kontrolü  
+- DQN uygulaması ile:  
+  - Çift DQN mimarisi  
+  - Deney tekrarı tamponu  
+  - Uyarlanabilir keşif oranı  
+  - Özelleştirilebilir sinir ağı  
+
+### 3. İki Sarkaç Rekabeti  
+- Rekabetçi ajan etkileşimi  
+- Dengeli ve saldırı kuvveti uygulamaları  
+- Opsiyonel Poisson darbe dağılımı  
+- Durum ve ödül paylaşımı  
+
+### 4. Görselleştirme Araçları  
+- Gerçek zamanlı animasyonlar  
+- Durum uzayı analizi  
+- Eğitim metrikleri  
+- Faz portreleri  
+
+## Kurulum  
+
+```bash  
+# Depoyu klonlayın  
+git clone https://github.com/isikmuhamm/inverted-pendulum-control  
+
+# Bağımlılıkları yükleyin  
+pip install numpy tensorflow scipy matplotlib  
+```  
+
+## Kullanım  
+
+### Temel Bileşenler  
+
+```bash  
+# Sıfır kuvvet simülasyonu  
+python reinforcement-learning/pendulum_zero_simulation.py  
+
+# Tekli sarkaç eğitimi  
+python reinforcement-learning/pendulum_training.py  
+
+# İki sarkaç rekabeti  
+python reinforcement-learning/pendulum_training_fight.py  
+
+# Görselleştirme arayüzü  
+python reinforcement-learning/pendulum_visualizer.py  
+```  
+
+### Görselleştirme Seçenekleri  
+
+1. Sıfır kuvvet simülasyonu animasyonu  
+2. Sistem durumu grafikleri  
+3. Eğitim süreci görselleştirmesi  
+4. Durum uzayı analizi  
+5. Ödül takibi  
+6. Eğitilmiş ajan canlı simülasyonu  
+
+## Algoritma Detayları  
+
+### DQN Uygulaması  
+1. **Durum Uzayı**: Araba pozisyonu, hızı, sarkaç açısı ve açısal hızı içerir  
+2. **Aksiyon Uzayı**: Denge ve saldırı için ayrık kuvvet değerleri  
+3. **Eğitim Süreci**:  
+   - Deney toplama  
+   - Minibatch örnekleme  
+   - Q-değer güncellemeleri  
+   - Hedef ağ senkronizasyonu  
+
+### Ana Bileşenler  
+- `DQNAgent`: Ana öğrenme ajan sınıfı  
+- `pendulum_dynamics`: Sistem fiziği uygulaması  
+- `pendulum_step`: Durum ilerleme hesaplayıcısı  
+- `replay`: Deney tabanlı öğrenme yöntemi  
+
+## Yapılandırma  
+
+Ayarlanabilir parametreler:  
+```python  
+CONTINUE_TRAINING = False  # Kayıtlı modelden devam et  
+POISSON_IMPACTS = False   # Rastgele darbeleri etkinleştir  
+max_len = 50000          # Tekrar tampon boyutu  
+poisson_lambda = 10      # Darbe sıklığı  
+```  
+
+## Model Mimarisi  
+
+```  
+Giriş Katmanı (4/8 nöron)  
+    ↓  
+Yoğun Katman (256 nöron, ReLU)  
+    ↓  
+Yoğun Katman (256 nöron, ReLU)  
+    ↓  
+Yoğun Katman (128 nöron, ReLU)  
+    ↓  
+Çıkış Katmanı (Aksiyon uzayı boyutu, Doğrusal)  
+```  
+
+## Veri Depolama  
+
+Oluşturulan dosyalar:  
+- Model ağırlıkları: `pendulum_model.keras`  
+- Ajan durumu: `agent_state.npy`  
+- Eğitim geçmişi: `states.npy`, `rewards.npy`  
+
+## Sonuçlar ve Görselleştirme  
+
+Görselleştirme sistemi şunları sağlar:  
+- Gerçek zamanlı sistem durumu takibi  
+- Eğitim ilerlemesi takibi  
+- Performans metrikleri analizi  
+- Faz uzayı görselleştirme  
+
+## Katkıda Bulunma  
+
+Katkılar memnuniyetle karşılanır! Lütfen:  
+- Sorunlar gönderin  
+- Depoyu çatallayın  
+- Çekme istekleri oluşturun  
+- İyileştirme önerileri sunun  
+
+## Lisans  
+
+Bu proje MIT Lisansı ile lisanslanmıştır - detaylar için LICENSE dosyasına bakın.
