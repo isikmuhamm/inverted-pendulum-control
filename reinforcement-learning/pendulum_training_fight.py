@@ -10,7 +10,7 @@ from tensorflow.keras.optimizers import Adam # type: ignore
 from pendulum_nonlinear_model import PendulumEnvironment
 
 CONTINUE_TRAINING = False
-POISSON_IMPACTS = True
+POISSON_IMPACTS = False
 save_folder = "reinforcement-learning"
 max_len = 50000
 poisson_lambda = 10
@@ -195,16 +195,22 @@ def train(episodes=2000, max_steps=200):
             actions_R = agent.act(state_RR)
             force_R_balance = env2.force_values[actions_R[0]]
             force_R_attack = env2.force_values[actions_R[1]]
-            print(f"  Adım {step+1}: L tarafından görülen durum ve alınan aksiyon: {state_RR} ---> {actions_R} Buna göre denge: {force_R_balance:.2f}, saldırı: {force_R_attack:.2f}")
+            print(f"  Adım {step+1}: R tarafından görülen durum ve alınan aksiyon: {state_RR} ---> {actions_R} Buna göre denge: {force_R_balance:.2f}, saldırı: {force_R_attack:.2f}")
 
             # Darbe uygula ve uygulanan darbeyi paylaş
             if POISSON_IMPACTS and step in poisson_steps_L:
                 force_R_balance += force_L_attack
                 print(f"  Adım {step+1}: L tarafından belirlenen darbe adımında darbe kuvveti uygulandı!")
+            elif not POISSON_IMPACTS:
+                force_R_balance += force_L_attack
+                print(f"  Adım {step+1}: L tarafından karar verilen darbe kuvveti uygulandı!")
        
             if POISSON_IMPACTS and step in poisson_steps_R:
                 force_L_balance += force_R_attack
                 print(f"  Adım {step+1}: R tarafından belirlenen darbe adımında darbe kuvveti uygulandı!")
+            elif not POISSON_IMPACTS:
+                force_L_balance += force_R_attack
+                print(f"  Adım {step+1}: R tarafından karar verilen darbe kuvveti uygulandı!")
 
             # Çevreyi güncelle
             next_state_L = np.reshape(env1.step(state_L[0], force_L_balance), [1, 4])
@@ -217,13 +223,13 @@ def train(episodes=2000, max_steps=200):
             xdot_L = next_state_L[0, 1]
             theta_L = (np.pi - next_state_L[0, 2] + np.pi) % (2 * np.pi) - np.pi    # [-π, π] aralığında normalize et
             thetadot_L = next_state_L[0, 3]
-            print (f"L aracı Adım {step+1}: x: {x_L:.2f}, xdot: {xdot_L:.2f}, theta: {theta_L:.2f}, thetadot: {thetadot_L:.2f}, Toplam F: {force_L_balance:.2f}")
+            print (f"  Adım {step+1}: L aracı: x: {x_L:.2f}, xdot: {xdot_L:.2f}, theta: {theta_L:.2f}, thetadot: {thetadot_L:.2f}, Toplam F: {force_L_balance:.2f}")
 
             x_R = next_state_R[0, 0]
             xdot_R = next_state_R[0, 1]
             theta_R = (np.pi - next_state_R[0, 2] + np.pi) % (2 * np.pi) - np.pi    # [-π, π] aralığında normalize et
             thetadot_R = next_state_R[0, 3]
-            print (f"R aracı Adım {step+1}: x: {x_R:.2f}, xdot: {xdot_R:.2f}, theta: {theta_R:.2f}, thetadot: {thetadot_R:.2f}, Toplam F: {force_R_balance:.2f}")
+            print (f"  Adım {step+1}: R aracı: x: {x_R:.2f}, xdot: {xdot_R:.2f}, theta: {theta_R:.2f}, thetadot: {thetadot_R:.2f}, Toplam F: {force_R_balance:.2f}")
 
             # Ödül hesapla
             reward_state_L = np.array([x_L, xdot_L, theta_L, thetadot_L])
@@ -263,7 +269,9 @@ def train(episodes=2000, max_steps=200):
             reward_states_R_history.append(reward_state_R)
             total_reward_L += reward_L_final
             total_reward_R += reward_R_final
-
+            
+            print("-"*50)
+            
             # Replay ve model güncelleme
             if step % 3 == 0:
                 agent.replay()
@@ -273,6 +281,7 @@ def train(episodes=2000, max_steps=200):
                 print(f"Episode: {e+1}/{episodes}, Left Reward: {total_reward_L:.2f}, Right Reward: {total_reward_R:.2f}, Epsilon: {agent.epsilon:.5f}")
                 rewards_L_history.append(total_reward_L)
                 rewards_R_history.append(total_reward_R)
+                print("*"*50)
                 break
 
     return agent, np.array(states_L_history), np.array(states_R_history), np.array(rewards_L_history), np.array(rewards_R_history), np.array(reward_states_L_history), np.array(reward_states_R_history)
@@ -280,7 +289,10 @@ def train(episodes=2000, max_steps=200):
 if __name__ == "__main__":
 
     # Eğitimi çalıştır
-    agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R = train(episodes=5)
+    agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R = train(episodes=3)
+
+    print(f"Eğitim sonucu: {'L aracı kazandı.' if sum(rewards_L) > sum(rewards_R) else 'R aracı kazandı.' if sum(rewards_R) > sum(rewards_L) else 'Berabere.'}")
+
 
     # Sonuçları kaydet
     agent.save_agent(f"{save_folder}")
