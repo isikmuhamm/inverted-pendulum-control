@@ -155,7 +155,6 @@ def train(episodes=2000, max_steps=200):
     states_history = []
     reward_states_history = []
     rewards_history = []
-    loss_history = []
     
     for e in range(episodes):
         state = env.initial_state
@@ -227,16 +226,15 @@ def train(episodes=2000, max_steps=200):
                 break
 
     
-    return agent, np.array(states_history), np.array(rewards_history), np.array(reward_states_history), np.array(loss_history)   
+    return agent, np.array(states_history), np.array(rewards_history), np.array(reward_states_history)   
 
 if __name__ == "__main__":
     # Eğitimi çalıştır
-    agent, states, rewards, reward_states, loss = train(episodes=5)
+    agent, states, rewards, reward_states = train(episodes=5)
     
     # Sonuçları kaydet
     agent.save_agent(f"{save_folder}")
     np.save(f"{save_folder}/states.npy", states)
     np.save(f"{save_folder}/reward_states.npy", reward_states)
     np.save(f"{save_folder}/rewards.npy", rewards)
-    np.save(f"{save_folder}/loss.npy", loss)
     print("Eğitim tamamlandı. Durum ve ödül geçmişi kaydedildi.")
