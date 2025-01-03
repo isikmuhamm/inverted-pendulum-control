@@ -9,11 +9,16 @@ from tensorflow.keras.layers import Dense # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
 from pendulum_nonlinear_model import PendulumEnvironment
 
-CONTINUE_TRAINING = False
+CONTINUE_TRAINING = True
 POISSON_IMPACTS = False
+FIGHT_STATE = True
 save_folder = "reinforcement-learning"
 max_len = 50000
 poisson_lambda = 10
+
+# İlk eğitim, F, F, F
+# İkinci eğitim, T, T, F
+# Üçüncü eğitim, T, F, T
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
@@ -52,11 +57,13 @@ class DQNAgent:
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
-            return [random.randrange(self.action_size), random.randrange(self.action_size)]
+            if FIGHT_STATE: return [np.argmax(balance_values), random.randrange(self.action_size)]
+            else: return [random.randrange(self.action_size), 0]
         act_values = self.model.predict(state, verbose=0)
         balance_values = act_values[0][:self.action_size]
         attack_values = act_values[0][self.action_size:]
-        return [np.argmax(balance_values), np.argmax(attack_values)]
+        if FIGHT_STATE: return [np.argmax(balance_values), np.argmax(attack_values)]
+        else: return [np.argmax(balance_values), 0]
 
     def remember(self, states, actions, rewards, next_states, done):
         self.memory.append((states, actions, rewards, next_states, done))
@@ -135,6 +142,7 @@ class DQNAgent:
             # Ajanın durumu
             agent_state = np.load(agent_state_path, allow_pickle=True).item()
             self.epsilon = agent_state.get('epsilon', self.epsilon)
+            if FIGHT_STATE and (self.epsilon == 0.01): self.epsilon = 1.00 # Dövüş modu için exploration'ı sıfırla
             self.learning_rate = agent_state.get('learning_rate', self.learning_rate)
             self.memory = deque(agent_state.get('memory', []), maxlen=max_len)
             print(f"Ajan durumu başarıyla {agent_state_path} konumundan yüklendi.")
@@ -169,9 +177,9 @@ def train(episodes=2000, max_steps=200):
 
     for e in range(episodes):
         state_L = np.reshape(env1.initial_state, [1, 4])
-        state_L[0][0] -= +2.00
+        state_L[0][0] -= 1.00
         state_R = np.reshape(env2.initial_state, [1, 4])
-        state_R[0][0] += +2.00
+        state_R[0][0] += 1.00
         state_LL = np.hstack((state_L, state_R))
         state_RR = np.hstack((state_R, state_L))
         print(f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, Right Cart: {state_R}")
@@ -179,38 +187,31 @@ def train(episodes=2000, max_steps=200):
         total_reward_R = 0
 
         if POISSON_IMPACTS:
-            poisson_steps_L = np.sort(np.random.choice(range(max_steps), size=np.random.poisson(poisson_lambda), replace=False))
-            print(f"  Poisson Darbe Adımları (L) {len(poisson_steps_L)} adım: {poisson_steps_L}")
-            poisson_steps_R = np.sort(np.random.choice(range(max_steps), size=np.random.poisson(poisson_lambda), replace=False))
-            print(f"  Poisson Darbe Adımları (R) {len(poisson_steps_R)} adım: {poisson_steps_R}")
+            poisson_steps = np.sort(np.random.choice(range(max_steps), size=np.random.poisson(poisson_lambda), replace=False))
+            print(f"  Poisson Darbe Adımları {len(poisson_steps)} adım: {poisson_steps}")
+            impact_forces = np.random.uniform(-10, 10, size=poisson_steps)
+
 
         for step in range(max_steps):
 
             # Durumlara göre denge ve saldırı kuvvetlerini belirle
             actions_L = agent.act(state_LL)
             force_L_balance = env1.force_values[actions_L[0]]
-            force_L_attack = env1.force_values[actions_L[1]]
-            print(f"  Adım {step+1}: L tarafından görülen durum ve alınan aksiyon:{state_LL} ---> {actions_L} Buna göre denge: {force_L_balance:.2f}, saldırı: {force_L_attack:.2f}")
+            force_L_attack = env1.attack_values[actions_L[1]]
+            print(f"  Adım {step+1}: L tarafından alınan aksiyon: {actions_L} Denge: {force_L_balance:.2f}, saldırı: {force_L_attack:.2f}")
 
             actions_R = agent.act(state_RR)
             force_R_balance = env2.force_values[actions_R[0]]
-            force_R_attack = env2.force_values[actions_R[1]]
-            print(f"  Adım {step+1}: R tarafından görülen durum ve alınan aksiyon: {state_RR} ---> {actions_R} Buna göre denge: {force_R_balance:.2f}, saldırı: {force_R_attack:.2f}")
+            force_R_attack = env2.attack_values[actions_R[1]]
+            print(f"  Adım {step+1}: R tarafından alınan aksiyon: {actions_R} Denge: {force_R_balance:.2f}, saldırı: {force_R_attack:.2f}")
 
-            # Darbe uygula ve uygulanan darbeyi paylaş
-            if POISSON_IMPACTS and step in poisson_steps_L:
-                force_R_balance += force_L_attack
-                print(f"  Adım {step+1}: L tarafından belirlenen darbe adımında darbe kuvveti uygulandı!")
-            elif not POISSON_IMPACTS:
-                force_R_balance += force_L_attack
-                print(f"  Adım {step+1}: L tarafından karar verilen darbe kuvveti uygulandı!")
-       
-            if POISSON_IMPACTS and step in poisson_steps_R:
-                force_L_balance += force_R_attack
-                print(f"  Adım {step+1}: R tarafından belirlenen darbe adımında darbe kuvveti uygulandı!")
-            elif not POISSON_IMPACTS:
-                force_L_balance += force_R_attack
-                print(f"  Adım {step+1}: R tarafından karar verilen darbe kuvveti uygulandı!")
+            # Rastgele bozucu darbe uygula ve uygulanan darbeyi paylaş
+            if POISSON_IMPACTS:
+                if step in poisson_steps:
+                    impact_index = np.where(poisson_steps == step)[0][0]  # Hangi darbe olduğunu bul
+                    force_L_balance += impact_forces[impact_index]
+                    force_R_balance -= impact_forces[impact_index]
+                    print(f"  Adım {step}: {impact_forces[impact_index]:.2f} kuvvetinde bir rastgele bozucu darbe uygulandı!")
 
             # Çevreyi güncelle
             next_state_L = np.reshape(env1.step(state_L[0], force_L_balance), [1, 4])
@@ -237,8 +238,8 @@ def train(episodes=2000, max_steps=200):
             reward_state_R = np.array([x_R, xdot_R, theta_R, thetadot_R])
             reward_state_R = np.reshape(reward_state_R, [1, 4])
 
-            reward_L = -(0.1 * np.dot(np.dot(reward_state_L, Q), reward_state_L.T).item() + 0.01 * (force_L_balance**2))
-            reward_R = -(0.1 * np.dot(np.dot(reward_state_R, Q), reward_state_R.T).item() + 0.01 * (force_R_balance**2))
+            reward_L = -(0.1 * np.dot(np.dot(reward_state_L, Q), reward_state_L.T).item() + 0.01 * ((force_L_balance+force_L_attack)**2))
+            reward_R = -(0.1 * np.dot(np.dot(reward_state_R, Q), reward_state_R.T).item() + 0.01 * ((force_R_balance+force_R_attack)**2))
 
             reward_L_final = reward_L - reward_R
             reward_R_final = reward_R - reward_L
@@ -288,8 +289,13 @@ def train(episodes=2000, max_steps=200):
 
 if __name__ == "__main__":
 
+    print(f"Reinforcement learning ile iki sarkacın aynı ajan tarafından kontrol edilmesi eğitimine hoş geldiniz. \
+           Kavga modu: {FIGHT_STATE}, Poisson Darbe: {POISSON_IMPACTS}, Eğitim devam durumu: {CONTINUE_TRAINING}\
+           Eğitimi kavga modunda çalıştırmadan önce kavgasız ve possion darbe modunda çalıştırmanız ve ajanı \
+           bu şekilde eğittikten sonra kavga modunu açmanız önerilir.")
+    
     # Eğitimi çalıştır
-    agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R = train(episodes=3)
+    agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R = train(episodes=10)
 
     print(f"Eğitim sonucu: {'L aracı kazandı.' if sum(rewards_L) > sum(rewards_R) else 'R aracı kazandı.' if sum(rewards_R) > sum(rewards_L) else 'Berabere.'}")
 
