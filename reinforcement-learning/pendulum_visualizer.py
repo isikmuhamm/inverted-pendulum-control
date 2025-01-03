@@ -4,23 +4,29 @@ from matplotlib.animation import FuncAnimation
 from pendulum_nonlinear_model import PendulumEnvironment
 import os
 
+STATE_COMPRESSION = 100
+REWARD_COMPRESSION = 15
+
 """
 Bu kod dosyası, eğitim sürecinde elde edilen sonuçları görselleştirmek için kullanılır. Seçenekler:
 1 - Kuvvetsiz simülasyon animasyonu: Kuvvetsiz simülasyon sırasında durum değişimi animasyonunu gösterir.
-2 - Kuvvetsiz simülasyon grafikleri: Kuvvetsiz simülasyon sırasında durum değişimi grafiklerini gösterir.
+2 - Kuvvetsiz simülasyon state grafikleri: Kuvvetsiz simülasyon sırasında durum değişimi grafiklerini gösterir.
 3 - Eğitim süreci animasyonu: Eğitim sürecindeki durum değişimi animasyonunu gösterir.
 4 - Eğitim süreci state grafikleri: Eğitim sürecindeki durum değişimini ve faz portrelerini gösterir.
-5 - Eğitim süreci ödül grafikleri: Eğitim sürecindeki ödül değişimini gösterir.
-6 - Eğitilmiş ajanın canlı simülasyonu: Eğitilmiş ajanı çalıştırarak bir animasyon, durum grafikleri, ödül grafikleri ve faz portrelerini gösterir.
+5 - Eğitim süreci ödül ve faz grafikleri: Eğitim sürecindeki ödül değişimini gösterir.
+6 - Çift eğitim süreci animasyonu: İki farklı eğitim sürecindeki durum değişimi animasyonunu gösterir.
+7 - Çift eğitim süreci state grafikleri: İki farklı eğitim sürecindeki durum değişimini gösterir.
+8 - Çift eğitim süreci ödül ve faz grafikleri: İki farklı eğitim sürecindeki ödül değişimini ve faz portrelerini gösterir.
 
 This code file is used to visualize the results obtained during the training process. Options:
 1 - Zero-force simulation animation: Shows the state change animation during the zero-force simulation.
-2 - Zero-force simulation graphs: Shows the state change graphs during the zero-force simulation.
+2 - Zero-force simulation state graphs: Shows the state change graphs during the zero-force simulation.
 3 - Training process animation: Shows the state change animation during the training process.
 4 - Training process state graphs: Shows the state change and phase portraits during the training process.
-5 - Training process reward graphs: Shows the reward change during the training process.
-6 - Live simulation of the trained agent: Runs the trained agent to show an animation, state graphs, reward graphs, and phase portraits.
-
+5 - Training process reward and phase graphs: Shows the reward change during the training process.
+6 - Dual training process animation: Shows the state change animation during two different training processes.
+7 - Dual training process state graphs: Shows the state change during two different training processes.
+8 - Dual training process reward and phase graphs: Shows the reward change and phase portraits during two different training processes.
 """
 
 class PendulumVisualizer:
@@ -102,6 +108,104 @@ class PendulumVisualizer:
         plt.legend(loc='upper right')
         plt.show()
 
+    def create_dual_cart_pendulum_animation(self, states_L, states_R, interval=50):
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.set_xlim(-3, 3)
+        ax.set_ylim(-2, 2)
+        ax.grid(True)
+
+        # Sol ve sağ arabalar için çizim nesneleri
+        cart_L, = ax.plot([], [], 'bs-', lw=10, label='Left Cart')
+        pendulum_L, = ax.plot([], [], 'bo-', lw=2, label='Left Pendulum')
+        trace_L, = ax.plot([], [], ':b', alpha=0.3, label='Left Path')
+        
+        cart_R, = ax.plot([], [], 'rs-', lw=10, label='Right Cart')
+        pendulum_R, = ax.plot([], [], 'ro-', lw=2, label='Right Pendulum')
+        trace_R, = ax.plot([], [], ':r', alpha=0.3, label='Right Path')
+
+        # İz için hafıza
+        history_x_L, history_y_L = [], []
+        history_x_R, history_y_R = [], []
+
+        time_text = ax.text(0.5, 0.95, '', transform=ax.transAxes, horizontalalignment='center')
+
+        # Sol araç için metin alanları
+        L_angle_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, color='blue')
+        L_angledot_text = ax.text(0.02, 0.90, '', transform=ax.transAxes, color='blue')
+        L_x_text = ax.text(0.02, 0.85, '', transform=ax.transAxes, color='blue')
+        L_xdot_text = ax.text(0.02, 0.80, '', transform=ax.transAxes, color='blue')
+
+        # Sağ araç için metin alanları
+        R_angle_text = ax.text(0.75, 0.95, '', transform=ax.transAxes, color='red')
+        R_angledot_text = ax.text(0.75, 0.90, '', transform=ax.transAxes, color='red')
+        R_x_text = ax.text(0.75, 0.85, '', transform=ax.transAxes, color='red')
+        R_xdot_text = ax.text(0.75, 0.80, '', transform=ax.transAxes, color='red')
+
+        def init():
+            cart_L.set_data([], [])
+            pendulum_L.set_data([], [])
+            trace_L.set_data([], [])
+            cart_R.set_data([], [])
+            pendulum_R.set_data([], [])
+            trace_R.set_data([], [])
+            return cart_L, pendulum_L, trace_L, cart_R, pendulum_R, trace_R
+
+        def animate(i):
+            # Sol araba
+            x_L = states_L[i,0, 0]
+            theta_L = states_L[i,0, 2]
+            xdot_L = states_L[i,0, 1]
+            theta_dot_L = states_L[i,0, 3]
+
+            cart_L.set_data([x_L - 0.1, x_L + 0.1], [0, 0])
+            pendulum_x_L = [x_L, x_L + self.l * np.sin(theta_L)]
+            pendulum_y_L = [0, -self.l * np.cos(theta_L)]
+            pendulum_L.set_data(pendulum_x_L, pendulum_y_L)
+
+            # Sağ araba
+            x_R = states_R[i,0, 0]
+            theta_R = states_R[i,0, 2]
+            xdot_R = states_R[i,0, 1]
+            theta_dot_R = states_R[i,0, 3]
+
+            cart_R.set_data([x_R - 0.1, x_R + 0.1], [0, 0])
+            pendulum_x_R = [x_R, x_R + self.l * np.sin(theta_R)]
+            pendulum_y_R = [0, -self.l * np.cos(theta_R)]
+            pendulum_R.set_data(pendulum_x_R, pendulum_y_R)
+
+            # İzleri güncelle
+            if i % 3 == 0:
+                history_x_L.append(pendulum_x_L)
+                history_y_L.append(pendulum_y_L)
+                history_x_R.append(pendulum_x_R)
+                history_y_R.append(pendulum_y_R)
+            trace_L.set_data(history_x_L, history_y_L)
+            trace_R.set_data(history_x_R, history_y_R)
+
+            # Metin bilgilerini güncelle
+            time_text.set_text(f'Time: {i * 0.02:.2f} [s]')
+            
+            L_angle_text.set_text(f'L Angle: {theta_L:.2f} [rad]')
+            L_angledot_text.set_text(f'L Angular Speed: {theta_dot_L:.2f} [rad/s]')
+            L_x_text.set_text(f'L Position: {x_L:.2f} [m]')
+            L_xdot_text.set_text(f'L Speed: {xdot_L:.2f} [m/s]')
+
+            R_angle_text.set_text(f'R Angle: {theta_R:.2f} [rad]')
+            R_angledot_text.set_text(f'R Angular Speed: {theta_dot_R:.2f} [rad/s]')
+            R_x_text.set_text(f'R Position: {x_R:.2f} [m]')
+            R_xdot_text.set_text(f'R Speed: {xdot_R:.2f} [m/s]')
+
+            return (cart_L, pendulum_L, trace_L, cart_R, pendulum_R, trace_R, 
+                    time_text, L_angle_text, L_angledot_text, L_x_text, L_xdot_text,
+                    R_angle_text, R_angledot_text, R_x_text, R_xdot_text)
+
+        anim = FuncAnimation(fig, animate, init_func=init, frames=len(states_L), 
+                            interval=interval, blit=True)
+
+        plt.title('Dual Cart-Pendulum System')
+        plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+        plt.show()
+
     def plot_states(self, states, title_prefix=""):
         fig, axs = plt.subplots(4, 1, figsize=(10, 8))
         t = np.arange(len(states)) * self.env.time_step
@@ -119,71 +223,41 @@ class PendulumVisualizer:
         plt.tight_layout()
         plt.show()
   
-    def plot_phase_portraits(self, states):
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 6))
+    def plot_phase_and_rewards(self, states, rewards, title_prefix=""):
+        fig = plt.figure(figsize=(12, 8))
+        gs = fig.add_gridspec(2, 2, height_ratios=[7, 3])
         
+        # Cart Phase Portrait (üst sol)
+        ax1 = fig.add_subplot(gs[0, 0])
         ax1.plot(states[:,0, 1], states[:,0, 0], 'b-')
         ax1.set_ylabel('Position (m)')
         ax1.set_xlabel('Velocity (m/s)')
-        ax1.set_title('Cart Phase Portrait')
+        ax1.set_title(f'{title_prefix} Cart Phase Portrait')
         ax1.grid(True)
         
+        # Pendulum Phase Portrait (üst sağ)
+        ax2 = fig.add_subplot(gs[0, 1])
         ax2.plot(states[:,0, 3], states[:,0, 2], 'r-')
         ax2.set_ylabel('Angle (rad)')
         ax2.set_xlabel('Angular Velocity (rad/s)')
-        ax2.set_title('Pendulum Phase Portrait')
+        ax2.set_title(f'{title_prefix} Pendulum Phase Portrait')
         ax2.grid(True)
+        
+        # Rewards (alt)
+        ax3 = fig.add_subplot(gs[1, :])
+        ax3.plot(rewards, 'g-')
+        ax3.set_title(f'{title_prefix} Training Rewards Over Time')
+        ax3.set_xlabel('Episode')
+        ax3.set_ylabel('Reward')
+        ax3.grid(True)
         
         plt.tight_layout()
         plt.show()
 
+    def compress(self, array, compression_factor=10):
+        compressed_array = array[::compression_factor]
+        return compressed_array
 
-    def plot_rewards(self, rewards):
-        plt.figure(figsize=(12, 6))
-        plt.plot(rewards)
-        plt.title('Training Rewards Over Time')
-        plt.xlabel('Episode')
-        plt.ylabel('Reward')
-        plt.grid(True)
-        plt.show()
-
-    def run_trained_agent(self, model_path):
-        from tensorflow import keras
-        try:
-            # Eğitilmiş modeli yükle
-            model = keras.models.load_model(model_path)
-        except Exception as e:
-            print(f"Model yüklenirken hata oluştu: {e}")
-            return
-
-        env = PendulumEnvironment()
-        
-        initial_state = env.initial_state
-        print(f"Başlangıç durumu: {initial_state}")
-        state = initial_state.reshape(1, 4)  # Model için reshape
-        states = [initial_state]  # İlk durumu listeye ekle
-
-        for _ in range(500):  # 10 saniye simülasyon (50 Hz)
-            # Modelin tahmin ettiği Q değerlerinden eylemi seç
-            q_values = model.predict(state, verbose=0)[0]
-            action_index = np.argmax(q_values)  # En yüksek Q-değerine sahip indeks
-            action = env.force_values[action_index]  # İlgili kuvvet değeri
-            
-            print(f"Q-values: {q_values}")
-            print(f"Seçilen Action (Kuvvet): {action}")
-
-            next_state = np.array(env.step(states[-1], action))  # Son state'i kullanarak env'de bir adım at
-            print(f"Next State: {next_state}")
-
-            states.append(next_state)  # Yeni durumu listeye ekle
-            state = next_state.reshape(1, 4)  # Bir sonraki tahmin için reshape
-
-        # Animasyon ve grafikler oluştur
-        states = np.array(states)
-        self.create_cart_pendulum_animation(states)
-        self.plot_states(states, "Trained Agent")
-        self.plot_phase_portraits(states)
-        
 def main():
     visualizer = PendulumVisualizer()
     base_path = "reinforcement-learning"
@@ -194,8 +268,10 @@ def main():
         print("2 - Kuvvetsiz simülasyon grafikleri")
         print("3 - Eğitim süreci animasyonu")
         print("4 - Eğitim süreci state grafikleri")
-        print("5 - Eğitim süreci ödül grafikleri")
-        print("6 - Eğitilmiş ajanın canlı simülasyonu")
+        print("5 - Eğitim süreci ödül ve faz grafikleri")
+        print("6 - Çift eğitim süreci animasyonu")
+        print("7 - Çift eğitim süreci state grafikleri")
+        print("8 - Çift eğitim süreci ödül ve faz grafikleri")
         print("0 - Çıkış")
         
         try:
@@ -215,7 +291,7 @@ def main():
                     print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
                 states = np.load(file_path)
-                visualizer.create_cart_pendulum_animation(states)
+                visualizer.create_cart_pendulum_animation(visualizer.compress(states, compression_factor=STATE_COMPRESSION))
 
             elif choice == '2':
                 file_path = os.path.join(base_path, "states_zero.npy")
@@ -223,7 +299,7 @@ def main():
                     print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
                 states = np.load(file_path)
-                visualizer.plot_states(states, "Free Simulation")
+                visualizer.plot_states(visualizer.compress(states, compression_factor=STATE_COMPRESSION), "Free Simulation")
 
             elif choice == '3':
                 file_path = os.path.join(base_path, "states.npy")
@@ -231,31 +307,47 @@ def main():
                     print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
                 states = np.load(file_path)
-                visualizer.create_cart_pendulum_animation(states)
+                visualizer.create_cart_pendulum_animation(visualizer.compress(states, compression_factor=STATE_COMPRESSION))
 
             elif choice == '4':
-                file_path = os.path.join(base_path, "reward_states.npy")
-                if not os.path.exists(file_path):
-                    print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
+                reward_states_file = os.path.join(base_path, "reward_states.npy")
+                if not os.path.exists(reward_states_file):
+                    print(f"{reward_states_file} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
-                states = np.load(file_path)
-                visualizer.plot_states(states, "Training")
-                visualizer.plot_phase_portraits(states)
+                states = np.load(reward_states_file)
+                visualizer.plot_states(visualizer.compress(states, compression_factor=STATE_COMPRESSION), "Training")
 
             elif choice == '5':
-                file_path = os.path.join(base_path, "rewards.npy")
+                rewards_file = os.path.join(base_path, "rewards.npy")
+                reward_states_file = os.path.join(base_path, "reward_states.npy")
                 if not os.path.exists(file_path):
                     print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
                     continue
-                rewards = np.load(file_path)
-                visualizer.plot_rewards(rewards)
+                rewards = np.load(rewards_file)
+                states = np.load(reward_states_file)
+                visualizer.plot_phase_and_rewards(states, rewards)
 
             elif choice == '6':
-                file_path = os.path.join(base_path, "pendulum_model.keras")
-                if not os.path.exists(file_path):
-                    print(f"{file_path} dosyası bulunamadı, dosyanın uygun konumda bulunduğundan emin olunuz.")
-                    continue
-                visualizer.run_trained_agent(file_path)
+                states_L = np.load(os.path.join(base_path, "states_L.npy"))
+                states_R = np.load(os.path.join(base_path, "states_R.npy"))
+                visualizer.create_dual_cart_pendulum_animation(visualizer.compress(states_L, compression_factor=STATE_COMPRESSION), visualizer.compress(states_R, compression_factor=STATE_COMPRESSION))
+
+            elif choice == '7':
+                states_L = np.load(os.path.join(base_path, "reward_states_L.npy"))
+                states_R = np.load(os.path.join(base_path, "reward_states_R.npy"))
+                visualizer.plot_states(visualizer.compress(states_L, compression_factor=STATE_COMPRESSION), "Double Training, Left Cart")
+                visualizer.plot_states(visualizer.compress(states_R, compression_factor=STATE_COMPRESSION), "Double Training, Right Cart")
+
+            elif choice == '8':
+                states_L = np.load(os.path.join(base_path, "reward_states_L.npy"))
+                states_R = np.load(os.path.join(base_path, "reward_states_R.npy"))
+                rewards_L = np.load(os.path.join(base_path, "rewards_L.npy"))
+                rewards_R = np.load(os.path.join(base_path, "rewards_R.npy"))
+
+                # Sol araba grafikleri
+                visualizer.plot_phase_and_rewards(visualizer.compress(states_L, compression_factor=STATE_COMPRESSION), visualizer.compress(rewards_L, compression_factor=REWARD_COMPRESSION))
+                # Sağ araba grafikleri
+                visualizer.plot_phase_and_rewards(visualizer.compress(states_R, compression_factor=STATE_COMPRESSION), visualizer.compress(rewards_R, compression_factor=REWARD_COMPRESSION))
 
             else:
                 print("Geçersiz seçim! Lütfen 0-6 arasında bir sayı giriniz.")
