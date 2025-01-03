@@ -10,7 +10,7 @@ from tensorflow.keras.optimizers import Adam # type: ignore
 from pendulum_nonlinear_model import PendulumEnvironment
 
 CONTINUE_TRAINING = False
-POISSON_IMPATCS = False
+POISSON_IMPACTS = False
 save_folder = "reinforcement-learning"
 max_len = 50000
 poisson_lambda = 10
@@ -162,7 +162,7 @@ def train(episodes=2000, max_steps=200):
         print(f"Episode {e+1}/{episodes}: Initial State: {state}")
         total_reward = 0
         
-        if POISSON_IMPATCS:
+        if POISSON_IMPACTS:
             num_impacts = np.random.poisson(poisson_lambda)  # Darbe sayısı
             impact_steps = np.sort(np.random.choice(range(max_steps), size=num_impacts, replace=False))  # Darbe adımları
             impact_forces = np.random.uniform(-10, 10, size=num_impacts)  # Darbe kuvvetleri
@@ -177,7 +177,7 @@ def train(episodes=2000, max_steps=200):
             action = agent.act(state)
             force = env.force_values[action]
 
-            if POISSON_IMPATCS:
+            if POISSON_IMPACTS:
                 if step in impact_steps:
                     impact_index = np.where(impact_steps == step)[0][0]  # Hangi darbe olduğunu bul
                     force += impact_forces[impact_index]
