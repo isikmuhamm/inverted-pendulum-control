@@ -152,7 +152,7 @@ class PendulumVisualizer:
 
         def animate(i):
             # Sol araba
-            x_L = states_L[i,0, 0]
+            x_L = states_L[i,0, 0] -1.00
             theta_L = states_L[i,0, 2]
             xdot_L = states_L[i,0, 1]
             theta_dot_L = states_L[i,0, 3]
@@ -163,7 +163,7 @@ class PendulumVisualizer:
             pendulum_L.set_data(pendulum_x_L, pendulum_y_L)
 
             # Sağ araba
-            x_R = states_R[i,0, 0]
+            x_R = states_R[i,0, 0] +1.00
             theta_R = states_R[i,0, 2]
             xdot_R = states_R[i,0, 1]
             theta_dot_R = states_R[i,0, 3]
