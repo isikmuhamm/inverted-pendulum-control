@@ -191,7 +191,7 @@ def train(episodes=2000, max_steps=200):
             xdot = next_state[0, 1]
             theta = (np.pi - next_state[0, 2] + np.pi) % (2 * np.pi) - np.pi    # [-π, π] aralığında normalize et
             thetadot = next_state[0, 3]
-            print (f"  Adım {step+1}: x: {x:.2f}, xdot: {xdot:.2f}, theta: {theta:.2f}, thetadot: {thetadot:.2f}, F: {force:.2f}")
+            print (f"  Adım {step+1}: x: {x:.2f}, xdot: {xdot:.2f}, theta: {theta:.2f}, thetadot: {thetadot:.2f}, F: {force:.2f}, Action: [{action}]")
 
             # Ödül hesapla
             reward_state = np.array([x, xdot, theta, thetadot])
@@ -230,7 +230,7 @@ def train(episodes=2000, max_steps=200):
 
 if __name__ == "__main__":
     # Eğitimi çalıştır
-    agent, states, rewards, reward_states = train(episodes=5)
+    agent, states, rewards, reward_states = train(episodes=500)
     
     # Sonuçları kaydet
     agent.save_agent(f"{save_folder}")
