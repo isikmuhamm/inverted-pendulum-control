@@ -12,9 +12,9 @@ from logger import Logger, load_and_save
 
 CONTINUE_TRAINING = True
 POISSON_IMPACTS = False
-FIGHT_STATE = False
-DOUBLE_MODE = False
-TEST_MODE = False
+FIGHT_STATE = True
+DOUBLE_MODE = True
+TEST_MODE = True
 if FIGHT_STATE: DOUBLE_MODE = True
 if TEST_MODE: CONTINUE_TRAINING = True
 
@@ -24,6 +24,7 @@ DTYPE = np.float32
 NO_ATTACK_INDEX = 4
 max_len = 100000
 poisson_lambda = 10
+neglect_state = [[0,0,0,0]]
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
@@ -60,15 +61,16 @@ class DQNAgent:
         return model
 
     def update_target_model(self):
+        if TEST_MODE: return
         self.target_model.set_weights(self.model.get_weights())
 
     def act(self, state):
         act_values = self.model.predict(state, verbose=0)
         balance_values = act_values[0][:self.half_actions]
         attack_values = act_values[0][self.half_actions:]
-        if np.random.rand() <= self.epsilon:
+        if not TEST_MODE and np.random.rand() <= self.epsilon:
             # Keşif
-            balance_idx = np.argmax(attack_values) if FIGHT_STATE and CONTINUE_TRAINING else random.randrange(self.half_actions)
+            balance_idx = np.argmax(balance_values) if FIGHT_STATE and CONTINUE_TRAINING else random.randrange(self.half_actions)
             attack_idx = random.randrange(self.half_actions) if FIGHT_STATE else NO_ATTACK_INDEX
         else:
             # En iyi bilinen değerleri kullan
@@ -78,14 +80,16 @@ class DQNAgent:
         return [balance_idx, attack_idx]
 
     def remember(self, states, actions, rewards, next_states, done):
+        if TEST_MODE: return
+        
         states = states.astype(DTYPE)
         rewards = np.array(rewards, dtype=DTYPE)
         next_states = next_states.astype(DTYPE)
         self.memory.append((states, actions, rewards, next_states, done))
 
     def replay(self):
-        if len(self.memory) < self.minimum_memory:
-            return
+        if TEST_MODE: return
+        if len(self.memory) < self.minimum_memory: return
 
         minibatch = random.sample(self.memory, self.batch_size)
         states = np.array([x[0][0] for x in minibatch], dtype=DTYPE)
@@ -164,8 +168,8 @@ class DQNAgent:
             
             # Ajanın durumu
             agent_state = np.load(agent_state_path, allow_pickle=True).item()
-            self.epsilon = agent_state.get('epsilon', self.epsilon)
-            if FIGHT_STATE and (self.epsilon == 0.01): self.epsilon = 1.00 # Dövüş modu için exploration'ı sıfırla
+            if TEST_MODE: self.epsilon = 0.0
+            else: self.epsilon = agent_state.get('epsilon', self.epsilon)
             self.learning_rate = agent_state.get('learning_rate', self.learning_rate)
             self.memory = deque(agent_state.get('memory', []), maxlen=max_len)
             print(f"Ajan durumu başarıyla {agent_state_path} konumundan yüklendi.")
@@ -182,10 +186,10 @@ def train(episodes=2000, max_steps=200):
     agent = DQNAgent( (env1.state_size * 2) + 1, env1.action_size * 2)
 
     Q = np.array([
-        [2, 0, 00, 0],
-        [0, 1, 00, 0],
-        [0, 0, 10, 0],
-        [0, 0, 00, 4]
+        [2, 0, 0, 0],       # Yatay konum
+        [0, 3, 0, 0],       # Yatay hız
+        [0, 0, 8, 0],       # Açısal pozisyon
+        [0, 0, 0, 3]        # Açısal hız
     ], dtype=DTYPE)
 
     # Veri toplama
@@ -205,21 +209,23 @@ def train(episodes=2000, max_steps=200):
             state_LL = np.hstack((state_L, state_R, [[external_impact_L]]))
             state_RR = np.hstack((state_R, state_L, [[external_impact_R]]))
         else:
-            state_LL = np.hstack((state_L, [[0,0,0,0]], [[external_impact_L]]))
-            if DOUBLE_MODE: state_RR = np.hstack((state_R, [[0,0,0,0]], [[external_impact_R]]))
+            state_LL = np.hstack((state_L, neglect_state, [[external_impact_L]]))
+            if DOUBLE_MODE: state_RR = np.hstack((state_R, neglect_state, [[external_impact_R]]))
 
-        if DOUBLE_MODE: print(f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, Right Cart: {state_R}")
-        else: print(f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}")
-        if DOUBLE_MODE: logger.log("train", f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, Right Cart: {state_R}")
-        else: logger.log("train", f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}")
+        if DOUBLE_MODE: print(f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, Right Cart: {state_R}, E: {agent.epsilon:.5f}")
+        else: print(f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, E: {agent.epsilon:.5f}")
+        if DOUBLE_MODE: logger.log("train", f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, Right Cart: {state_R}, E: {agent.epsilon:.5f}")
+        else: logger.log("train", f"Episode {e+1}/{episodes}: Initial State ---> Left Cart: {state_L}, E: {agent.epsilon:.5f}")
 
         total_reward_L, total_reward_R = 0, 0
 
         if POISSON_IMPACTS:
-            poisson_steps = np.sort(np.random.choice(range(max_steps), size=np.random.poisson(poisson_lambda), replace=False))
+            num_impacts = np.random.poisson(poisson_lambda)
+            poisson_steps = np.sort(np.random.choice(range(max_steps), size=num_impacts, replace=False))
             print(f"  Poisson Darbe Adımları {len(poisson_steps)} adım: {poisson_steps}")
             logger.log("train", f"  Poisson Darbe Adımları {len(poisson_steps)} adım: {poisson_steps}")
-            impact_forces = np.random.uniform(-10, 10, size=poisson_steps)
+            impact_forces = np.random.uniform(-10, 10, size=num_impacts)
+            # impact_forces = np.random.choice(env1.force_values, size=num_impacts)
 
 
         for step in range(max_steps):
@@ -233,22 +239,20 @@ def train(episodes=2000, max_steps=200):
                 actions_R = agent.act(state_RR)
                 force_R_balance = env2.force_values[actions_R[0]]
                 force_R_attack = env2.attack_values[actions_R[1]]
-            else: force_R_balance, force_R_attack = 0,0
-
-            if DOUBLE_MODE: print(f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, saldırı: {force_L_attack:+06.2f}\t\t\t\tR aksiyon: {actions_R} Denge: {force_R_balance:+06.2f}, saldırı: {force_R_attack:+06.2f}")
-            else: print(f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, saldırı: {force_L_attack:+06.2f}")
-            if DOUBLE_MODE: logger.log("train", f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, saldırı: {force_L_attack:+06.2f}\t\t\t\tR aksiyon: {actions_R} Denge: {force_R_balance:+06.2f}, saldırı: {force_R_attack:+06.2f}")
-            else: logger.log("train", f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, saldırı: {force_L_attack:+06.2f}")
+            else: force_R_balance, force_R_attack = 0, 0
 
             # Rastgele bozucu darbe uygula ve uygulanan darbeyi paylaş
             if POISSON_IMPACTS:
                 if step in poisson_steps:
                     impact_index = np.where(poisson_steps == step)[0][0]  # Hangi darbe olduğunu bul
                     poisson_force = impact_forces[impact_index]
-                    print(f"  Adım {step+1}: {impact_forces[impact_index]:.2f} kuvvetinde bir rastgele bozucu darbe uygulandı!")
-                    logger.log("train", f"  Adım {step+1}: {impact_forces[impact_index]:.2f} kuvvetinde bir rastgele bozucu darbe uygulandı!")
                 else: poisson_force = 0
             else: poisson_force = 0
+
+            if DOUBLE_MODE: print(f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, Saldırı: {force_L_attack:+06.2f}, P: {poisson_force:+06.2f}\t\t\t\tR aksiyon: {actions_R} Denge: {force_R_balance:+06.2f}, Saldırı: {force_R_attack:+06.2f}, P: {poisson_force:+06.2f}")
+            else: print(f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, Saldırı: {force_L_attack:+06.2f}, P: {poisson_force:+06.2f}")
+            if DOUBLE_MODE: logger.log("train", f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, Saldırı: {force_L_attack:+06.2f}, P: {poisson_force:+06.2f}\t\t\t\tR aksiyon: {actions_R} Denge: {force_R_balance:+06.2f}, Saldırı: {force_R_attack:+06.2f}, P: {poisson_force:+06.2f}")
+            else: logger.log("train", f"  Adım {step+1}: L aksiyon: {actions_L} Denge: {force_L_balance:+06.2f}, Saldırı: {force_L_attack:+06.2f}, P: {poisson_force:+06.2f}")
 
             total_force_L = force_L_balance + force_R_attack + poisson_force
             total_force_R = force_R_balance + force_L_attack + poisson_force
@@ -264,8 +268,8 @@ def train(episodes=2000, max_steps=200):
                 next_state_LL = np.hstack((next_state_L, next_state_R, [[external_impact_L]]))
                 next_state_RR = np.hstack((next_state_R, next_state_L, [[external_impact_R]]))
             else:
-                next_state_LL = np.hstack((next_state_L, [[0,0,0,0]], [[external_impact_L]]))
-                if DOUBLE_MODE: next_state_RR = np.hstack((next_state_R, [[0,0,0,0]], [[external_impact_R]]))
+                next_state_LL = np.hstack((next_state_L, neglect_state, [[external_impact_L]]))
+                if DOUBLE_MODE: next_state_RR = np.hstack((next_state_R, neglect_state, [[external_impact_R]]))
 
             # Dinamik modelin hedef açıyla olan farkını normalize et
             x_L = next_state_L[0, 0]
@@ -279,7 +283,6 @@ def train(episodes=2000, max_steps=200):
                 theta_R = (np.pi - next_state_R[0, 2] + np.pi) % (2 * np.pi) - np.pi    # [-π, π] aralığında normalize et
                 thetadot_R = next_state_R[0, 3]
 
-            # Ödül hesapla
             reward_state_L = np.array([x_L, xdot_L, theta_L, thetadot_L])
             reward_state_L = np.reshape(reward_state_L, [1, 4])
             
@@ -288,9 +291,22 @@ def train(episodes=2000, max_steps=200):
                 reward_state_R = np.reshape(reward_state_R, [1, 4])
 
 
-            reward_L = -(0.1 * np.dot(np.dot(reward_state_L, Q), reward_state_L.T).item() + 0.001 * (force_L_balance**2) + 0.0005 * (force_L_attack**2) + 0.2 * (abs(theta_L) > np.pi/8) + 0.1 * (abs(theta_L) * abs(thetadot_L))  )
-            if DOUBLE_MODE: reward_R = -(0.1 * np.dot(np.dot(reward_state_R, Q), reward_state_R.T).item() + 0.001 * (force_R_balance**2) + 0.0005 * (force_R_attack**2) + 0.2 * (abs(theta_R) > np.pi/8) + 0.1 * (abs(theta_R) * abs(thetadot_R))  )
+            # Bölüm bitti mi kontrol et.
+            done_L = (abs(theta_L) >= np.pi / 4 or abs(x_L) > 5)
+            if done_L: 
+                print(f"  L tarafından bölüm bitti. L bölümü kaybetti.")
+                logger.log("train", f"  L tarafından bölüm bitti. L bölümü kaybetti.")
 
+            if DOUBLE_MODE:
+                done_R = (abs(theta_R) >= np.pi / 4 or abs(x_R) > 5)
+                if done_R: 
+                    print(f"  R tarafından bölüm bitti. R bölümü kaybetti.")
+                    logger.log("train", f"  R tarafından bölüm bitti. R bölümü kaybetti.")
+
+
+            # Ödül hesapla
+            reward_L = -(0.1 * np.dot(np.dot(reward_state_L, Q), reward_state_L.T).item() + 0.001 * (force_L_balance**2) + 0.0005 * (force_L_attack**2) + 0.2 * (abs(theta_L) > np.pi/8) + 0.1 * (abs(theta_L) * abs(thetadot_L)) + done_L * (0.1 * (max_steps - step)) )
+            if DOUBLE_MODE: reward_R = -(0.1 * np.dot(np.dot(reward_state_R, Q), reward_state_R.T).item() + 0.001 * (force_R_balance**2) + 0.0005 * (force_R_attack**2) + 0.2 * (abs(theta_R) > np.pi/8) + 0.1 * (abs(theta_R) * abs(thetadot_R)) + done_R * (0.1 * (max_steps - step)) )
 
             # Kavga modu açıkken rakibin dengesizlik durumuna göre ödül ayarlanır
             if FIGHT_STATE: reward_L_final = reward_L - 0.3*reward_R
@@ -299,25 +315,10 @@ def train(episodes=2000, max_steps=200):
             elif DOUBLE_MODE: reward_R_final = reward_R
 
 
-            # Bölüm bitti mi kontrol et, bittiyse cezalandır.
-            done_L = (abs(theta_L) >= np.pi / 4 or abs(x_L) > 5)
-            if done_L: 
-                reward_L_final -= 0.1 * (max_steps - step)
-                print(f"  L tarafından bölüm bitti. L bölümü kaybetti.")
-                logger.log("train", f"  L tarafından bölüm bitti. L bölümü kaybetti.")
-
-            if DOUBLE_MODE:
-                done_R = (abs(theta_R) >= np.pi / 4 or abs(x_R) > 5)
-                if done_R: 
-                    reward_R_final -= 0.1 * (max_steps - step)
-                    print(f"  R tarafından bölüm bitti. R bölümü kaybetti.")
-                    logger.log("train", f"  R tarafından bölüm bitti. R bölümü kaybetti.")
-
-
-            if DOUBLE_MODE: print (f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {force_L_balance:+06.2f}, Ödül: {reward_L_final:+06.2f},\t\tR durum: [{x_R:.2f}, {xdot_R:.2f}, {theta_R:.2f}, {thetadot_R:.2f}], Toplam F: {force_R_balance:+06.2f}, Ödül: {reward_R_final:+06.2f}")
-            else: print (f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {force_L_balance:+06.2f}, Ödül: {reward_L_final:+06.2f}")
-            if DOUBLE_MODE: logger.log("train", f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {force_L_balance:+06.2f}, Ödül: {reward_L_final:+06.2f},\t\tR durum: [{x_R:.2f}, {xdot_R:.2f}, {theta_R:.2f}, {thetadot_R:.2f}], Toplam F: {force_R_balance:+06.2f}, Ödül: {reward_R_final:+06.2f}")
-            else: logger.log("train", f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {force_L_balance:+06.2f}, Ödül: {reward_L_final:+06.2f}")
+            if DOUBLE_MODE: print (f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {total_force_L:+06.2f}, Ödül: {reward_L_final:+06.2f},\t\tR durum: [{x_R:.2f}, {xdot_R:.2f}, {theta_R:.2f}, {thetadot_R:.2f}], Toplam F: {total_force_R:+06.2f}, Ödül: {reward_R_final:+06.2f}")
+            else: print (f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {total_force_L:+06.2f}, Ödül: {reward_L_final:+06.2f}")
+            if DOUBLE_MODE: logger.log("train", f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {total_force_L:+06.2f}, Ödül: {reward_L_final:+06.2f},\t\tR durum: [{x_R:.2f}, {xdot_R:.2f}, {theta_R:.2f}, {thetadot_R:.2f}], Toplam F: {total_force_R:+06.2f}, Ödül: {reward_R_final:+06.2f}")
+            else: logger.log("train", f"  Adım {step+1}: L durum: [{x_L:.2f}, {xdot_L:.2f}, {theta_L:.2f}, {thetadot_L:.2f}], Toplam F: {total_force_L:+06.2f}, Ödül: {reward_L_final:+06.2f}")
 
 
             if DOUBLE_MODE: done = done_L or done_R
@@ -328,14 +329,15 @@ def train(episodes=2000, max_steps=200):
             if DOUBLE_MODE: agent.remember(state_RR, actions_R, reward_R_final, next_state_RR, done_R)
 
             # Durumu güncelle ve bilgileri topla
-            state_L = next_state_L
-            if DOUBLE_MODE: state_R = next_state_R
+            state_L, state_LL = next_state_L, next_state_LL
+            if DOUBLE_MODE: state_R, state_RR = next_state_R, next_state_RR
+
+            # Durumları ve ödülleri kaydet
             states_L_history.append(state_L)
             reward_states_L_history.append(reward_state_L)
             if DOUBLE_MODE:
                 states_R_history.append(state_R)
                 reward_states_R_history.append(reward_state_R)
-
             total_reward_L += reward_L_final
             if DOUBLE_MODE: total_reward_R += reward_R_final
             
@@ -371,16 +373,18 @@ if __name__ == "__main__":
     logger.log("train", "Eğitimi kavga modunda çalıştırmadan önce kavgasız ve possion darbe modunda çalıştırmanız ve ajanı bu")
     logger.log("train", "şekilde eğittikten sonra kavga modunu açmanız önerilir. Ctrl+C ile eğitimi istediğiniz zaman durdurabilirsiniz.")
     
-    batch_size = 1000  # Her bir batch'teki episode sayısı
+    batch_size = 100  # Her bir batch'teki episode sayısı
     batch_number = 0
+    batch_limit = 3
     
     while True:
+        if batch_number == batch_limit: break
         try:
             print(f"\nBatch {batch_number + 1} başlıyor...")
             logger.log("train", f"\nBatch {batch_number + 1} başlıyor...")
             
             # Batch training
-            agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R, steps_per_episode = train(episodes=batch_size)
+            agent, states_L, states_R, rewards_L, rewards_R, reward_states_L, reward_states_R, steps_per_episode = train(episodes=batch_size, max_steps=1000)
             
             # Save agent first
             agent.save_agent(f"{save_folder}")
@@ -413,3 +417,5 @@ if __name__ == "__main__":
             if 'agent' in locals():
                 agent.save_agent(f"{save_folder}")
             break
+
+        finally: logger.flush()
