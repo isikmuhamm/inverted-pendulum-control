@@ -22,7 +22,7 @@ class PendulumEnvironment:
         self.action_size = 9
         self.state_size = 4
         self.force_values = np.linspace(-1, 1, self.action_size)*10
-        self.attack_values = np.linspace(-1, 1, self.action_size)*3
+        self.attack_values = np.linspace(-1, 1, self.action_size)*1.50
         
     @property
     def initial_state(self):
